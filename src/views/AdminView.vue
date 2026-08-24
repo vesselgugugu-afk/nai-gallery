@@ -524,7 +524,7 @@
       <div v-else-if="!users.length" class="empty-state"><p>暂无用户</p></div>
       <table v-else class="data-table">
         <thead>
-          <tr><th>用户</th><th>角色</th><th>解锁数</th><th>下载数</th><th>最后活跃</th><th>操作</th></tr>
+          <tr><th>用户</th><th>角色</th><th>登录标记</th><th>解锁数</th><th>下载数</th><th>最后活跃</th><th>操作</th></tr>
         </thead>
         <tbody>
           <template v-for="u in users" :key="u.discord_id">
@@ -534,6 +534,7 @@
                 <strong>{{ u.username }}</strong><br /><small>{{ u.discord_id }}</small>
               </td>
               <td><span :class="['role-badge', u.role]">{{ u.role === 'admin' ? '管理员' : '用户' }}</span></td>
+              <td><span v-if="u.last_login_at" class="login-marker" :title="formatDate(u.last_login_at)">已登录</span><span v-else class="no-data">未登录</span></td>
               <td>{{ u.unlock_count }}</td>
               <td>{{ u.download_count }}</td>
               <td>{{ u.last_active ? formatDate(u.last_active) : '从未' }}</td>
@@ -544,7 +545,7 @@
               </td>
             </tr>
             <tr v-if="expandedUser === u.discord_id" class="user-downloads-row">
-              <td :colspan="6">
+              <td :colspan="7">
                 <div v-if="userDownloadsLoading[u.discord_id]" class="admin-placeholder" style="font-size:12px">加载中...</div>
                 <p v-else-if="userDownloadsError[u.discord_id]" class="status-error" style="font-size:12px">{{ userDownloadsError[u.discord_id] }}</p>
                 <div v-else-if="!userDownloads[u.discord_id]?.length" class="no-data" style="padding:8px">暂无下载记录</div>
@@ -2337,6 +2338,7 @@ function copyToClipboard(text) {
 .role-badge { display: inline-block; padding: 2px 10px; border-radius: 12px; font-size: 11px; font-weight: 600; }
 .role-badge.admin { background: rgba(192,57,43,0.2); color: #e74c3c; }
 .role-badge.user { background: rgba(255,255,255,0.08); color: var(--text); opacity: 0.7; }
+.login-marker { display: inline-block; padding: 2px 8px; border-radius: 10px; background: rgba(122,139,100,0.18); color: var(--secondary); font-size: 11px; font-weight: 600; }
 
 /* 筛选行 */
 .filter-row { display: flex; gap: 12px; margin-bottom: 16px; flex-wrap: wrap; }

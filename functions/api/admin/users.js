@@ -5,7 +5,7 @@ export async function onRequestGet({ request, env }) {
   if (auth.response) return auth.response;
 
   const rows = await env.DB.prepare(
-    `SELECT u.discord_id, u.username, u.avatar, u.role, u.created_at, u.updated_at,
+    `SELECT u.discord_id, u.username, u.avatar, u.role, u.created_at, u.updated_at, u.last_login_at,
             COUNT(DISTINCT ub.batch_id) AS unlock_count,
             COUNT(DISTINCT dl.id) AS download_count,
             MAX(ub.last_seen_at) AS last_active
