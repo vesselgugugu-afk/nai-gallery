@@ -175,6 +175,9 @@ export async function onRequestGet({ request, env }) {
   }
 
   await upsertUser(env, user);
+  await env.DB.prepare("UPDATE users SET last_login_at = ?, updated_at = ? WHERE discord_id = ?")
+    .bind(new Date().toISOString(), new Date().toISOString(), user.id)
+    .run();
   const cookie = await createSessionCookie(env, user.id);
   const headers = new Headers({ Location: `${env.PUBLIC_BASE_URL || url.origin}/` });
   headers.append("Set-Cookie", cookie);
