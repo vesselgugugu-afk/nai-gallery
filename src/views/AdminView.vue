@@ -42,6 +42,7 @@
               <button class="btn-outline" @click="openFilterWords(); showMoreMenu = false">过滤词</button>
               <button class="btn-outline" @click="openUsers(); showMoreMenu = false">用户管理</button>
               <button class="btn-outline" @click="openDownloads(); showMoreMenu = false">下载记录</button>
+              <button class="btn-outline" @click="openLogins(); showMoreMenu = false">登录记录</button>
             </div>
           </div>
           <div class="toolbar-desktop-actions">
@@ -51,6 +52,7 @@
             <button class="btn-outline" @click="openFilterWords">过滤词</button>
             <button class="btn-outline" @click="openUsers">用户管理</button>
             <button class="btn-outline" @click="openDownloads">下载记录</button>
+            <button class="btn-outline" @click="openLogins">登录记录</button>
           </div>
         </div>
 
@@ -700,6 +702,39 @@
       </div>
     </section>
 
+    <!-- 登录记录 -->
+    <section v-if="view === 'logins'" class="admin-card">
+      <div class="list-toolbar">
+        <h2>登录记录</h2>
+        <div class="toolbar-actions">
+          <button class="btn-outline" @click="fetchLogins()">刷新</button>
+          <button class="btn-outline" @click="view = 'list'">← 返回列表</button>
+        </div>
+      </div>
+      <div v-if="loginsLoading" class="admin-placeholder">加载中...</div>
+      <p v-else-if="loginsError" class="status-error">{{ loginsError }}</p>
+      <div v-else-if="!logins.length" class="empty-state"><p>暂无登录记录</p></div>
+      <table v-else class="data-table">
+        <thead>
+          <tr><th>用户</th><th>状态</th><th>Discord ID</th><th>IP</th><th>登录时间</th></tr>
+        </thead>
+        <tbody>
+          <tr v-for="l in logins" :key="l.id">
+            <td><strong>{{ l.username || '未知用户' }}</strong></td>
+            <td>
+              <span v-if="l.result === 'blocked'" class="role-badge" style="color:#d64545">已拦截</span>
+              <span v-else class="role-badge" style="color:#2f9e44">成功</span>
+              <div v-if="l.result === 'blocked' && l.reason" class="batch-meta">{{ loginReasonLabel(l.reason) }}</div>
+            </td>
+            <td><small>{{ l.discord_id }}</small></td>
+            <td><small>{{ l.ip_hash ? l.ip_hash.slice(-4) : '—' }}</small></td>
+            <td>{{ formatDate(l.timestamp) }}</td>
+          </tr>
+        </tbody>
+      </table>
+      <p v-if="loginsTotal > logins.length" class="batch-meta" style="margin-top:10px">仅显示最近 {{ logins.length }} 条，共 {{ loginsTotal }} 条。</p>
+    </section>
+
     <!-- 批次下载详情 -->
     <section v-if="view === 'batch-downloads'" class="admin-card">
       <div class="list-toolbar">
@@ -925,6 +960,12 @@ const dlTotal = ref(0);
 const dlUserFilter = ref('');
 const dlBatchFilter = ref('');
 let dlDebounceTimer = null;
+
+// ---- 登录记录 ----
+const logins = ref([]);
+const loginsLoading = ref(false);
+const loginsError = ref('');
+const loginsTotal = ref(0);
 
 // ---- 批次下载详情 ----
 const batchDownloadsId = ref('');
@@ -2045,6 +2086,39 @@ async function fetchDownloads(offset = 0) {
 function debounceFetchDownloads() {
   clearTimeout(dlDebounceTimer);
   dlDebounceTimer = setTimeout(() => { downloads.value = []; dlTotal.value = 0; fetchDownloads(0); }, 400);
+}
+
+// ---- 登录记录 ----
+function openLogins() {
+  view.value = 'logins';
+  logins.value = [];
+  loginsTotal.value = 0;
+  fetchLogins();
+}
+async function fetchLogins() {
+  loginsLoading.value = true;
+  loginsError.value = '';
+  try {
+    const data = await apiFetch('/api/admin/logins?limit=100');
+    logins.value = data.logins || [];
+    loginsTotal.value = data.total || logins.value.length;
+  } catch (e) {
+    logins.value = [];
+    loginsError.value = e.message || '登录记录加载失败';
+  } finally {
+    loginsLoading.value = false;
+  }
+}
+function loginReasonLabel(reason) {
+  const labels = {
+    personal_blacklist: '个人黑名单',
+    guild_blacklist: '服务器黑名单',
+    guild_whitelist: '未命中服务器白名单',
+    guild_lookup_failed: '服务器信息获取失败',
+    not_in_guild: '不在指定服务器',
+    role_denied: '身份组不通过',
+  };
+  return labels[reason] || reason || '';
 }
 
 // ---- 重置密码 ----

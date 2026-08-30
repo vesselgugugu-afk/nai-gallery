@@ -1,5 +1,6 @@
 ﻿import { createSessionCookie } from "../../_lib/session.js";
 import { upsertUser, isWhitelisted } from "../../_lib/db.js";
+import { requestAuditFields } from "../../_lib/request.js";
 import { base64UrlEncode, hmacSha256 } from "../../_lib/crypto.js";
 import {
   GUILD_WHITELIST_KEY,
@@ -26,6 +27,24 @@ async function validState(request, env, state) {
   if (Date.now() - Number(timestamp) > 10 * 60 * 1000) return false;
   const expected = base64UrlEncode(await hmacSha256(env.SESSION_SECRET, `${nonce}.${timestamp}`));
   return signature === expected;
+}
+
+async function recordLogin(env, request, user, result, reason) {
+  const audit = await requestAuditFields(request, env);
+  await env.DB.prepare(
+    `INSERT INTO login_logs (discord_id, username, ip_hash, user_agent, timestamp, result, reason)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+  )
+    .bind(
+      user.id,
+      user.username || "",
+      audit.ip_hash,
+      audit.user_agent,
+      new Date().toISOString(),
+      result,
+      reason || null,
+    )
+    .run();
 }
 
 export async function onRequestGet({ request, env }) {
@@ -62,6 +81,7 @@ export async function onRequestGet({ request, env }) {
     .bind(user.id)
     .first();
   if (blocked) {
+    await recordLogin(env, request, user, "blocked", "personal_blacklist");
     return Response.redirect(`${env.PUBLIC_BASE_URL || url.origin}/`, 302);
   }
 
@@ -73,6 +93,7 @@ export async function onRequestGet({ request, env }) {
   if (hasGuildAccessRules) {
     const guilds = await fetchUserGuilds(token.access_token);
     if (!guilds) {
+      await recordLogin(env, request, user, "blocked", "guild_lookup_failed");
       return Response.redirect(`${baseUrl}/?auth=failed`, 302);
     }
     const userGuildIds = new Set(guilds.map(g => g.id));
@@ -99,6 +120,7 @@ export async function onRequestGet({ request, env }) {
       }
     }
     if (blacklisted && !personallyWhitelisted) {
+      await recordLogin(env, request, user, "blocked", "guild_blacklist");
       return Response.redirect(`${baseUrl}/`, 302);
     }
 
@@ -118,6 +140,7 @@ export async function onRequestGet({ request, env }) {
         }
       }
       if (!whitelisted) {
+        await recordLogin(env, request, user, "blocked", "guild_whitelist");
         return Response.redirect(`${baseUrl}/?auth=not_in_guild`, 302);
       }
     }
@@ -144,9 +167,11 @@ export async function onRequestGet({ request, env }) {
         }
       }
       if (!inGuild) {
+        await recordLogin(env, request, user, "blocked", "not_in_guild");
         return Response.redirect(`${baseUrl}/?auth=not_in_guild`, 302);
       }
       if (env.DISCORD_REQUIRED_ROLE_ID && !memberRoles.includes(env.DISCORD_REQUIRED_ROLE_ID)) {
+        await recordLogin(env, request, user, "blocked", "role_denied");
         return Response.redirect(`${baseUrl}/?auth=role_denied`, 302);
       }
     }
@@ -169,6 +194,7 @@ export async function onRequestGet({ request, env }) {
         }
       }
       if (!allowed) {
+        await recordLogin(env, request, user, "blocked", "role_denied");
         return Response.redirect(`${baseUrl}/?auth=role_denied`, 302);
       }
     }
@@ -178,6 +204,7 @@ export async function onRequestGet({ request, env }) {
   await env.DB.prepare("UPDATE users SET last_login_at = ?, updated_at = ? WHERE discord_id = ?")
     .bind(new Date().toISOString(), new Date().toISOString(), user.id)
     .run();
+  await recordLogin(env, request, user, "success");
   const cookie = await createSessionCookie(env, user.id);
   const headers = new Headers({ Location: `${env.PUBLIC_BASE_URL || url.origin}/` });
   headers.append("Set-Cookie", cookie);
